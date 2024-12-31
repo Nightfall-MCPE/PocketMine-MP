@@ -2137,13 +2137,13 @@ class World implements ChunkManager{
 	}
 
 	/**
-	 * Uses a item on a position and face, placing it or activating the block
+	 * Uses an item on a position and face, placing it or activating the block
 	 *
 	 * @param Player|null $player         default null
 	 * @param bool        $playSound      Whether to play a block-place sound if the block was placed successfully.
 	 * @param Item[]      &$returnedItems Items to be added to the target's inventory (or dropped if the inventory is full)
 	 */
-	public function useItemOn(Vector3 $vector, Item &$item, int $face, ?Vector3 $clickVector = null, ?Player $player = null, bool $playSound = false, array &$returnedItems = []) : bool{
+	public function useItemOn(Vector3 $vector, Item &$item, int $face, ?Vector3 $clickVector = null, ?Player $player = null, bool $playSound = false, array &$returnedItems = []) : ItemUseResult{
 		$blockClicked = $this->getBlock($vector);
 		$blockReplace = $blockClicked->getSide($face);
 
@@ -2159,16 +2159,16 @@ class World implements ChunkManager{
 
 		if(!$this->isInWorld($blockReplace->getPosition()->x, $blockReplace->getPosition()->y, $blockReplace->getPosition()->z)){
 			//TODO: build height limit messages for custom world heights and mcregion cap
-			return false;
+			return ItemUseResult::FAIL();
 		}
 		$chunkX = $blockReplace->getPosition()->getFloorX() >> Chunk::COORD_BIT_SIZE;
 		$chunkZ = $blockReplace->getPosition()->getFloorZ() >> Chunk::COORD_BIT_SIZE;
 		if(!$this->isChunkLoaded($chunkX, $chunkZ) || $this->isChunkLocked($chunkX, $chunkZ)){
-			return false;
+			return ItemUseResult::FAIL();
 		}
 
 		if($blockClicked->getTypeId() === BlockTypeIds::AIR){
-			return false;
+			return ItemUseResult::FAIL();
 		}
 
 		if($player !== null){
@@ -2184,24 +2184,24 @@ class World implements ChunkManager{
 			$ev->call();
 			if(!$ev->isCancelled()){
 				if($ev->useBlock() && $blockClicked->onInteract($item, $face, $clickVector, $player, $returnedItems)){
-					return true;
+					return ItemUseResult::SUCCESS();
 				}
 
 				if($ev->useItem()){
 					$result = $item->onInteractBlock($player, $blockReplace, $blockClicked, $face, $clickVector, $returnedItems);
 					if($result !== ItemUseResult::NONE){
-						return $result === ItemUseResult::SUCCESS;
+						return $result;
 					}
 				}
 			}else{
-				return false;
+				return ItemUseResult::FAIL();
 			}
 		}elseif($blockClicked->onInteract($item, $face, $clickVector, $player, $returnedItems)){
-			return true;
+			return ItemUseResult::SUCCESS();
 		}
 
 		if($item->isNull() || !$item->canBePlaced()){
-			return false;
+			return ItemUseResult::FAIL();
 		}
 		$hand = $item->getBlock($face);
 		$hand->position($this, $blockReplace->getPosition()->x, $blockReplace->getPosition()->y, $blockReplace->getPosition()->z);
@@ -2214,19 +2214,19 @@ class World implements ChunkManager{
 			$face = Facing::UP;
 			$hand->position($this, $blockReplace->getPosition()->x, $blockReplace->getPosition()->y, $blockReplace->getPosition()->z);
 		}elseif(!$hand->canBePlacedAt($blockReplace, $clickVector, $face, false)){
-			return false;
+			return ItemUseResult::FAIL();
 		}
 
 		$tx = new BlockTransaction($this);
 		if(!$hand->place($tx, $item, $blockReplace, $blockClicked, $face, $clickVector, $player)){
-			return false;
+			return ItemUseResult::FAIL();
 		}
 
 		foreach($tx->getBlocks() as [$x, $y, $z, $block]){
 			$block->position($this, $x, $y, $z);
 			foreach($block->getCollisionBoxes() as $collisionBox){
 				if(count($this->getCollidingEntities($collisionBox)) > 0){
-					return false;  //Entity in block
+					return ItemUseResult::NONE();
 				}
 			}
 		}
@@ -2255,12 +2255,12 @@ class World implements ChunkManager{
 
 			$ev->call();
 			if($ev->isCancelled()){
-				return false;
+				return ItemUseResult::FAIL();
 			}
 		}
 
 		if(!$tx->apply()){
-			return false;
+			return ItemUseResult::FAIL();
 		}
 		foreach($tx->getBlocks() as [$x, $y, $z, $_]){
 			$tile = $this->getTileAt($x, $y, $z);
@@ -2278,7 +2278,7 @@ class World implements ChunkManager{
 
 		$item->pop();
 
-		return true;
+		return ItemUseResult::SUCCESS();
 	}
 
 	public function getEntity(int $entityId) : ?Entity{
@@ -2334,7 +2334,7 @@ class World implements ChunkManager{
 		for($x = $minX; $x <= $maxX; ++$x){
 			for($z = $minZ; $z <= $maxZ; ++$z){
 				foreach($this->getChunkEntities($x, $z) as $ent){
-					if($ent !== $entity && $ent->boundingBox->intersectsWith($bb)){
+					if($ent !== $entity && $ent->boundingBox->intersectsWith($bb, 0.01)){
 						$nearby[] = $ent;
 					}
 				}
