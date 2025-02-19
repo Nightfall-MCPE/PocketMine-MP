@@ -264,14 +264,7 @@ final class Utils{
 	}
 
 	/**
-	 * Returns the current Operating System
-	 * Windows => win
-	 * MacOS => mac
-	 * iOS => ios
-	 * Android => android
-	 * Linux => Linux
-	 * BSD => bsd
-	 * Other => other
+	 * @return string one of the Utils::OS_* constants
 	 */
 	public static function getOS(bool $recalculate = false) : string{
 		if(self::$os === null || $recalculate){
@@ -594,7 +587,7 @@ final class Utils{
 	 * @phpstan-param \Closure(TMemberType) : void $validator
 	 */
 	public static function validateArrayValueType(array $array, \Closure $validator) : void{
-		foreach($array as $k => $v){
+		foreach(Utils::promoteKeys($array) as $k => $v){
 			try{
 				$validator($v);
 			}catch(\TypeError $e){
